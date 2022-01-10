@@ -1,4 +1,4 @@
-import SortableList from '../../2-sortable-list/solution/index.js';
+import SortableList from '../2-sortable-list/index.js';
 import escapeHtml from './utils/escape-html.js';
 import fetchJson from './utils/fetch-json.js';
 
@@ -49,6 +49,7 @@ export default class ProductForm {
             Authorization: `Client-ID ${IMGUR_CLIENT_ID}`
           },
           body: formData,
+          referrer: ''
         });
 
         imageListContainer.firstElementChild.append(this.getImageItem(result.data.link, file.name));
@@ -85,6 +86,7 @@ export default class ProductForm {
               type="text"
               name="title"
               class="form-control"
+              data-element="title"
               placeholder="Название товара">
           </fieldset>
         </div>
@@ -101,6 +103,7 @@ export default class ProductForm {
         <div class="form-group form-group__wide">
           <label class="form-label">Фото</label>
 
+          <!-- imageListContainer -->
           <div data-element="imageListContainer"></div>
 
           <button data-element="uploadImage" type="button" class="button-primary-outline">
@@ -196,6 +199,7 @@ export default class ProductForm {
       : this.getEmptyTemplate();
 
     this.element = element.firstElementChild;
+
     this.subElements = this.getSubElements(this.element);
   }
 
@@ -220,16 +224,19 @@ export default class ProductForm {
   }
 
   getFormData() {
-    const { productForm, imageListContainer } = this.subElements;
+    const { imageListContainer, productForm } = this.subElements;
     const excludedFields = ['images'];
     const formatToNumber = ['price', 'quantity', 'discount', 'status'];
     const fields = Object.keys(this.defaultFormData).filter(item => !excludedFields.includes(item));
+    const getValue = field => productForm.querySelector(`[name=${field}]`);
     const values = {};
 
     for (const field of fields) {
+      const value = getValue(field);
+
       values[field] = formatToNumber.includes(field)
-        ? parseInt(productForm.querySelector(`#${field}`).value)
-        : productForm.querySelector(`#${field}`).value;
+        ? parseInt(value)
+        : value;
     }
 
     const imagesHTMLCollection = imageListContainer.querySelectorAll('.sortable-table__cell-img');

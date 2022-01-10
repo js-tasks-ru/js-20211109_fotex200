@@ -1,375 +1,267 @@
-import escapeHtml from './utils/escape-html.js';
-import fetchJson from './utils/fetch-json.js';
-
-const IMGUR_CLIENT_ID = '28aaa2e823b03b1';
-const BACKEND_URL = 'https://course-js.javascript.ru';
-
-const component = new ProductForm();
-
-document.body.append(component);
-
-
-export default class ProductForm {
-  element; // DOM element
+export default class RangePicker {
+  element = null;
   subElements = {};
-  defaultFormData = {
-    title: '',
-    description: '',
-    quantity: 1,
-    subcategory: '',
-    status: 1,
-    images: [],
-    price: 100,
-    discount: 0
+  selectingFrom = true;
+  selected = {
+    from: new Date(),
+    to: new Date()
   };
 
-  onSubmit = event => {
-    event.preventDefault();
-
-    this.save();
-  };
-
-  uploadImage = () => {
-    const fileInput = document.createElement('input');
-
-    fileInput.type = 'file';
-    fileInput.accept = 'image/*';
-
-    fileInput.addEventListener('change', async () => {
-      const [file] = fileInput.files;
-
-      if (file) {
-        const formData = new FormData();
-        const { uploadImage, imageListContainer } = this.subElements;
-
-        formData.append('image', file);
-
-        uploadImage.classList.add('is-loading');
-        uploadImage.disabled = true;
-
-        const result = await fetchJson('https://api.imgur.com/3/image', {
-          method: 'POST',
-          headers: {
-            Authorization: `Client-ID ${IMGUR_CLIENT_ID}`,
-          },
-          body: formData,
-          referrer: ''
-        });
-
-        imageListContainer.append(this.getImageItem(result.data.link, file.name));
-
-        uploadImage.classList.remove('is-loading');
-        uploadImage.disabled = false;
-
-        // Remove input from body
-        fileInput.remove();
-      }
-    });
-
-    // must be in body for IE
-    fileInput.hidden = true;
-    document.body.append(fileInput);
-
-    fileInput.click();
-  };
-
-  constructor (productId) {
-    this.productId = productId;
+  static formatDate(date) {
+    return date.toLocaleString('ru', {dateStyle: 'short'});
   }
 
-  template () {
-    return `
-      <div class="product-form">
+  onDocumentClick = event => {
+    const isOpen = this.element.classList.contains('rangepicker_open');
+    const isRangePicker = this.element.contains(event.target);
 
-      <form data-element="productForm" class="form-grid">
-        <div class="form-group form-group__half_left">
-          <fieldset>
-            <label class="form-label">Название товара</label>
-            <input required
-              id="title"
-              value=""
-              type="text"
-              name="title"
-              class="form-control"
-              placeholder="Название товара">
-          </fieldset>
-        </div>
-
-        <div class="form-group form-group__wide">
-          <label class="form-label">Описание</label>
-          <textarea required
-            id="description"
-            class="form-control"
-            name="description"
-            data-element="productDescription"
-            placeholder="Описание товара"></textarea>
-        </div>
-
-        <div class="form-group form-group__wide">
-          <label class="form-label">Фото</label>
-
-          <ul class="sortable-list" data-element="imageListContainer">
-            ${this.createImagesList()}
-          </ul>
-
-          <button data-element="uploadImage" type="button" class="button-primary-outline">
-            <span>Загрузить</span>
-          </button>
-        </div>
-
-        <div class="form-group form-group__half_left">
-          <label class="form-label">Категория</label>
-            ${this.createCategoriesSelect()}
-        </div>
-
-        <div class="form-group form-group__half_left form-group__two-col">
-          <fieldset>
-            <label class="form-label">Цена ($)</label>
-            <input required
-              id="price"
-              value=""
-              type="number"
-              name="price"
-              class="form-control"
-              placeholder="${this.defaultFormData.price}">
-          </fieldset>
-          <fieldset>
-            <label class="form-label">Скидка ($)</label>
-            <input required
-              id="discount"
-              value=""
-              type="number"
-              name="discount"
-              class="form-control"
-              placeholder="${this.defaultFormData.discount}">
-          </fieldset>
-        </div>
-
-        <div class="form-group form-group__part-half">
-          <label class="form-label">Количество</label>
-          <input required
-            id="quantity"
-            value=""
-            type="number"
-            class="form-control"
-            name="quantity"
-            placeholder="${this.defaultFormData.quantity}">
-        </div>
-
-        <div class="form-group form-group__part-half">
-          <label class="form-label">Статус</label>
-          <select id="status" class="form-control" name="status">
-            <option value="1">Активен</option>
-            <option value="0">Неактивен</option>
-          </select>
-        </div>
-
-        <div class="form-buttons">
-          <button type="submit" name="save" class="button-primary-outline">
-            ${this.productId ? "Сохранить" : "Добавить"} товар
-          </button>
-        </div>
-      </form>
-    </div>
-    `;
-  }
-
-  async render () {
-    const categoriesPromise = this.loadCategoriesList();
-
-    const productPromise = this.productId
-      ? this.loadProductData(this.productId)
-      : Promise.resolve(this.defaultFormData);
-
-    const [categoriesData, productResponse] = await Promise.all([categoriesPromise, productPromise]);
-    const [productData] = productResponse;
-
-    this.formData = productData;
-    this.categories = categoriesData;
-
-    this.renderForm();
-
-    if (this.formData) {
-      this.setFormData();
-      this.initEventListeners();
+    if (isOpen && !isRangePicker) {
+      this.close();
     }
+  };
 
-    return this.element;
+  constructor({from = new Date(), to = new Date()} = {}) {
+    this.showDateFrom = new Date(from);
+    this.selected = {from, to};
+
+    this.render();
   }
 
-  renderForm () {
-    const element = document.createElement('div');
+  get template() {
+    const from = RangePicker.formatDate(this.selected.from);
+    const to = RangePicker.formatDate(this.selected.to);
 
-    element.innerHTML = this.formData
-      ? this.template()
-      : this.getEmptyTemplate();
-
-    this.element = element.firstElementChild;
-    this.subElements = this.getSubElements(element);
-  }
-
-  getEmptyTemplate () {
-    return `<div>
-      <h1 class="page-title">Страница не найдена</h1>
-      <p>Извините, данный товар не существует</p>
+    return `<div class="rangepicker">
+      <div class="rangepicker__input" data-element="input">
+        <span data-element="from">${from}</span> -
+        <span data-element="to">${to}</span>
+      </div>
+      <div class="rangepicker__selector" data-element="selector"></div>
     </div>`;
   }
 
-  async save() {
-    const product = this.getFormData();
+  render() {
+    const element = document.createElement('div');
 
-    try {
-      const result = await fetchJson(`${BACKEND_URL}/api/rest/products`, {
-        method: this.productId ? 'PATCH' : 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(product)
-      });
+    element.innerHTML = this.template;
 
-      this.dispatchEvent(result.id);
-    } catch (error) {
-      /* eslint-disable-next-line no-console */
-      console.error('something went wrong', error);
-    }
-  }
+    this.element = element.firstElementChild;
+    this.subElements = this.getSubElements(element);
 
-  getFormData () {
-    const { productForm, imageListContainer } = this.subElements;
-    const excludedFields = ['images'];
-    const formatToNumber = ['price', 'quantity', 'discount', 'status'];
-    const fields = Object.keys(this.defaultFormData).filter(item => !excludedFields.includes(item));
-    const getValue = field => productForm.querySelector(`[name=${field}]`).value;
-    const values = {};
-
-    for (const field of fields) {
-      const value = getValue(field);
-
-      values[field] = formatToNumber.includes(field)
-        ? parseInt(value)
-        : value;
-    }
-
-    const imagesHTMLCollection = imageListContainer.querySelectorAll('.sortable-table__cell-img');
-
-    values.images = [];
-    values.id = this.productId;
-
-    for (const image of imagesHTMLCollection) {
-      values.images.push({
-        url: image.src,
-        source: image.alt
-      });
-    }
-
-    return values;
-  }
-
-  dispatchEvent (id) {
-    const event = this.productId
-      ? new CustomEvent('product-updated', { detail: id }) // new CustomEvent('click')
-      : new CustomEvent('product-saved');
-
-    this.element.dispatchEvent(event);
-  }
-
-  setFormData () {
-    const { productForm } = this.subElements;
-    const excludedFields = ['images'];
-    const fields = Object.keys(this.defaultFormData).filter(item => !excludedFields.includes(item));
-
-    fields.forEach(item => {
-      const element = productForm.querySelector(`#${item}`);
-
-      element.value = this.formData[item] || this.defaultFormData[item];
-    });
-  }
-
-  async loadProductData (productId) {
-    return fetchJson(`${BACKEND_URL}/api/rest/products?id=${productId}`);
-  }
-
-  async loadCategoriesList () {
-    return fetchJson(`${BACKEND_URL}/api/rest/categories?_sort=weight&_refs=subcategory`);
-  }
-
-  createCategoriesSelect () {
-    const wrapper = document.createElement('div');
-
-    wrapper.innerHTML = `<select class="form-control" id="subcategory" name="subcategory"></select>`;
-
-    const select = wrapper.firstElementChild;
-
-    for (const category of this.categories) {
-      for (const child of category.subcategories) {
-        select.append(new Option(`${category.title} > ${child.title}`, child.id));
-      }
-    }
-
-    return select.outerHTML;
+    this.initEventListeners();
   }
 
   getSubElements(element) {
     const subElements = {};
-    const elements = element.querySelectorAll('[data-element]');
 
-    for (const item of elements) {
-      subElements[item.dataset.element] = item;
+    for (const subElement of element.querySelectorAll('[data-element]')) {
+      subElements[subElement.dataset.element] = subElement;
     }
 
     return subElements;
   }
 
-  createImagesList () {
-    return this.formData.images.map(item => {
-      return this.getImageItem(item.url, item.source).outerHTML;
-    }).join('');
+  initEventListeners() {
+    const {input, selector} = this.subElements;
+
+    document.addEventListener('click', this.onDocumentClick, true);
+
+    input.addEventListener('click', () => this.toggle());
+    selector.addEventListener('click', event => this.onSelectorClick(event));
   }
 
-  getImageItem (url, name) {
-    const wrapper = document.createElement('div');
-
-    wrapper.innerHTML = `
-      <li class="products-edit__imagelist-item sortable-list__item">
-        <span>
-          <img src="./icon-grab.svg" data-grab-handle alt="grab">
-          <img class="sortable-table__cell-img" alt="${escapeHtml(name)}" src="${escapeHtml(url)}">
-          <span>${escapeHtml(name)}</span>
-        </span>
-
-        <button type="button">
-          <img src="./icon-trash.svg" alt="delete" data-delete-handle>
-        </button>
-      </li>`;
-
-    return wrapper.firstElementChild;
+  toggle() {
+    this.element.classList.toggle('rangepicker_open');
+    this.renderDateRangePicker();
   }
 
-  initEventListeners () {
-    const { productForm, uploadImage, imageListContainer } = this.subElements;
+  onSelectorClick({target}) {
+    if (target.classList.contains('rangepicker__cell')) {
+      this.onRangePickerCellClick(target);
+    }
+  }
 
-    productForm.addEventListener('submit', this.onSubmit);
-    uploadImage.addEventListener('click', this.uploadImage);
+  close() {
+    this.element.classList.remove('rangepicker_open');
+  }
 
-    /* TODO: will be removed in the next iteration of realization.
-       this logic will be implemented inside "SortableList" component
-    */
-    imageListContainer.addEventListener('click', event => {
-      if ('deleteHandle' in event.target.dataset) {
-        event.target.closest('li').remove();
+  renderDateRangePicker() {
+    const showDate1 = new Date(this.showDateFrom);
+    const showDate2 = new Date(this.showDateFrom);
+    const { selector } = this.subElements;
+
+    showDate2.setMonth(showDate2.getMonth() + 1);
+
+    selector.innerHTML = `
+      <div class="rangepicker__selector-arrow"></div>
+      <div class="rangepicker__selector-control-left"></div>
+      <div class="rangepicker__selector-control-right"></div>
+      ${this.renderCalendar(showDate1)}
+      ${this.renderCalendar(showDate2)}
+    `;
+
+    const controlLeft = selector.querySelector('.rangepicker__selector-control-left');
+    const controlRight = selector.querySelector('.rangepicker__selector-control-right');
+
+    controlLeft.addEventListener('click', () => this.prev());
+    controlRight.addEventListener('click', () => this.next());
+
+    this.renderHighlight();
+  }
+
+  prev() {
+    this.showDateFrom.setMonth(this.showDateFrom.getMonth() - 1);
+    this.renderDateRangePicker();
+  }
+
+  next() {
+    this.showDateFrom.setMonth(this.showDateFrom.getMonth() + 1);
+    this.renderDateRangePicker();
+  }
+
+  renderHighlight() {
+    const { from, to } = this.selected;
+
+    for (const cell of this.element.querySelectorAll('.rangepicker__cell')) {
+      const { value } = cell.dataset;
+      const cellDate = new Date(value);
+
+      cell.classList.remove('rangepicker__selected-from');
+      cell.classList.remove('rangepicker__selected-between');
+      cell.classList.remove('rangepicker__selected-to');
+
+      if (from && value === from.toISOString()) {
+        cell.classList.add('rangepicker__selected-from');
+      } else if (to && value === to.toISOString()) {
+        cell.classList.add('rangepicker__selected-to');
+      } else if (from && to && cellDate >= from && cellDate <= to) {
+        cell.classList.add('rangepicker__selected-between');
       }
-    });
+    }
+
+    if (from) {
+      const selectedFromElem = this.element.querySelector(`[data-value="${from.toISOString()}"]`);
+      if (selectedFromElem) {
+        selectedFromElem.closest('.rangepicker__cell').classList.add('rangepicker__selected-from');
+      }
+    }
+
+    if (to) {
+      const selectedToElem = this.element.querySelector(`[data-value="${to.toISOString()}"]`);
+      if (selectedToElem) {
+        selectedToElem.closest('.rangepicker__cell').classList.add('rangepicker__selected-to');
+      }
+    }
   }
 
-  destroy () {
+  renderCalendar(showDate) {
+    const date = new Date(showDate);
+    const getGridStartIndex = dayIndex => {
+      const index = dayIndex === 0 ? 6 : (dayIndex - 1); // make Sunday (0) the last day
+      return index + 1;
+    };
+
+    date.setDate(1);
+
+    // text-transform: capitalize
+    const monthStr = date.toLocaleString('ru', {month: 'long'});
+
+    let table = `<div class="rangepicker__calendar">
+      <div class="rangepicker__month-indicator">
+        <time datetime=${monthStr}>${monthStr}</time>
+      </div>
+      <div class="rangepicker__day-of-week">
+        <div>Пн</div><div>Вт</div><div>Ср</div><div>Чт</div><div>Пт</div><div>Сб</div><div>Вс</div>
+      </div>
+      <div class="rangepicker__date-grid">
+    `;
+
+    // first day of month starts after a space
+    // * * * 1 2 3 4
+    table += `
+      <button type="button"
+        class="rangepicker__cell"
+        data-value="${date.toISOString()}"
+        style="--start-from: ${getGridStartIndex(date.getDay())}">
+          ${date.getDate()}
+      </button>`;
+
+    date.setDate(2);
+
+    while (date.getMonth() === showDate.getMonth()) {
+      table += `
+        <button type="button"
+          class="rangepicker__cell"
+          data-value="${date.toISOString()}">
+            ${date.getDate()}
+        </button>`;
+
+      date.setDate(date.getDate() + 1);
+    }
+
+    // close the table
+    table += '</div></div>';
+
+    return table;
+  }
+
+  onRangePickerCellClick(target) {
+    const { value } = target.dataset;
+
+    if (value) {
+      const dateValue = new Date(value);
+
+      if (this.selectingFrom) {
+        this.selected = {
+          from: dateValue,
+          to: null
+        };
+        this.selectingFrom = false;
+        this.renderHighlight();
+      } else {
+        if (dateValue > this.selected.from) {
+          this.selected.to = dateValue;
+        } else {
+          this.selected.to = this.selected.from;
+          this.selected.from = dateValue;
+        }
+
+        this.selectingFrom = true;
+        this.renderHighlight();
+      }
+
+      if (this.selected.from && this.selected.to) {
+        this.dispatchEvent();
+        this.close();
+        this.subElements.from.innerHTML = RangePicker.formatDate(this.selected.from);
+        this.subElements.to.innerHTML = RangePicker.formatDate(this.selected.to);
+      }
+    }
+  }
+
+  dispatchEvent() {
+    this.element.dispatchEvent(new CustomEvent('date-select', {
+      bubbles: true,
+      detail: this.selected,
+    }));
+  }
+
+  remove() {
+    this.element.remove();
+    // TODO: Warning! To remove listener  MUST be passes the same event phase
+    document.removeEventListener('click', this.onDocumentClick, true);
+  }
+
+  destroy() {
     this.remove();
     this.element = null;
-    this.subElements = null;
-  }
+    this.subElements = {};
+    this.selectingFrom = true;
+    this.selected = {
+      from: new Date(),
+      to: new Date()
+    };
 
-  remove () {
-    if (this.element) {
-      this.element.remove();
-    }
+    return this;
   }
 }
